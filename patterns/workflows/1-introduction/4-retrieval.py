@@ -1,10 +1,13 @@
 import json
-import os
+from typing import Any, List
 
-from openai import OpenAI
 from pydantic import BaseModel, Field
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+from client_util import load_env, get_client, get_model
+
+load_env()
+client = get_client()
+MODEL = get_model()
 
 """
 docs: https://platform.openai.com/docs/guides/function-calling
@@ -28,7 +31,7 @@ def search_kb(question: str):
 # Step 1: Call model with search_kb tool defined
 # --------------------------------------------------------------
 
-tools = [
+tools: List[Any] = [
     {
         "type": "function",
         "function": {
@@ -49,15 +52,15 @@ tools = [
 
 system_prompt = "You are a helpful assistant that answers questions from the knowledge base about our e-commerce store."
 
-messages = [
+messages: List[Any] = [
     {"role": "system", "content": system_prompt},
     {"role": "user", "content": "What is the return policy?"},
 ]
 
-completion = client.chat.completions.create(
-    model="gpt-4o",
-    messages=messages,
-    tools=tools,
+completion = client.chat.completions.create(  # type: ignore[arg-type]
+    model=MODEL,
+    messages=messages,  # type: ignore[arg-type]
+    tools=tools,  # type: ignore[arg-type]
 )
 
 # --------------------------------------------------------------
@@ -76,15 +79,17 @@ def call_function(name, args):
         return search_kb(**args)
 
 
-for tool_call in completion.choices[0].message.tool_calls:
-    name = tool_call.function.name
-    args = json.loads(tool_call.function.arguments)
-    messages.append(completion.choices[0].message)
+tool_calls = completion.choices[0].message.tool_calls
+if tool_calls:
+    for tool_call in tool_calls:
+        name = tool_call.function.name
+        args = json.loads(tool_call.function.arguments)
+        messages.append(completion.choices[0].message)  # type: ignore[list-item]
 
-    result = call_function(name, args)
-    messages.append(
-        {"role": "tool", "tool_call_id": tool_call.id, "content": json.dumps(result)}
-    )
+        result = call_function(name, args)
+        messages.append(  # type: ignore[list-item]
+            {"role": "tool", "tool_call_id": tool_call.id, "content": json.dumps(result)}
+        )
 
 # --------------------------------------------------------------
 # Step 4: Supply result and call model again
@@ -96,10 +101,10 @@ class KBResponse(BaseModel):
     source: int = Field(description="The record id of the answer.")
 
 
-completion_2 = client.beta.chat.completions.parse(
-    model="gpt-4o",
-    messages=messages,
-    tools=tools,
+completion_2 = client.beta.chat.completions.parse(  # type: ignore[arg-type]
+    model=MODEL,
+    messages=messages,  # type: ignore[arg-type]
+    tools=tools,  # type: ignore[arg-type]
     response_format=KBResponse,
 )
 
@@ -108,8 +113,10 @@ completion_2 = client.beta.chat.completions.parse(
 # --------------------------------------------------------------
 
 final_response = completion_2.choices[0].message.parsed
-final_response.answer
-final_response.source
+if final_response is None:
+    raise ValueError("Model did not return a KBResponse")
+print("Answer:", final_response.answer)
+print("Source ID:", final_response.source)
 
 # --------------------------------------------------------------
 # Question that doesn't trigger the tool
@@ -120,10 +127,10 @@ messages = [
     {"role": "user", "content": "What is the weather in Tokyo?"},
 ]
 
-completion_3 = client.beta.chat.completions.parse(
-    model="gpt-4o",
-    messages=messages,
-    tools=tools,
+completion_3 = client.beta.chat.completions.parse(  # type: ignore[arg-type]
+    model=MODEL,
+    messages=messages,  # type: ignore[arg-type]
+    tools=tools,  # type: ignore[arg-type]
 )
 
-completion_3.choices[0].message.content
+print("Non-KB question response:", completion_3.choices[0].message.content)

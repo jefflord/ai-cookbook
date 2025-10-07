@@ -1,9 +1,12 @@
-import os
-
-from openai import OpenAI
 from pydantic import BaseModel
+import json
+from typing import Any, Type
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+from client_util import load_env, get_client, get_model, model_to_json
+
+load_env()
+client = get_client()
+MODEL = get_model()
 
 
 # --------------------------------------------------------------
@@ -17,17 +20,40 @@ class CalendarEvent(BaseModel):
     participants: list[str]
 
 
+"""Example structured output workflow script using a shared JSON example generator.
+
+The helper `model_to_json` now lives in `client_util` so other scripts can
+reuse consistent illustrative JSON examples without duplicating heuristics.
+"""
+
+
+# Generic example JSON for the target model (auto-generated)
+CALENDAR_EVENT_EXAMPLE_SCHEMA = model_to_json(CalendarEvent)
+
+
+#print("\n--- Example CalendarEvent JSON ---")
+#print(EXAMPLE_JSON)
+
 # --------------------------------------------------------------
 # Step 2: Call the model
 # --------------------------------------------------------------
 
+default_content = "Extract the event information."
+default_content = "Extract the event information and return ONLY valid JSON matching the schema.\n"
+default_content += "Schema fields: name (str), date (str), participants (list[str]).\n"
+default_content += "Example response JSON (do not include comments):\n" + CALENDAR_EVENT_EXAMPLE_SCHEMA
+
+
 completion = client.beta.chat.completions.parse(
-    model="gpt-4o",
+    model=MODEL,
     messages=[
-        {"role": "system", "content": "Extract the event information."},
+        {
+            "role": "system",
+            "content": default_content,
+        },
         {
             "role": "user",
-            "content": "Alice and Bob are going to a science fair on Friday.",
+            "content": "Jeff and Gary will be at the moon landing on July 20th.",
         },
     ],
     response_format=CalendarEvent,
@@ -37,7 +63,27 @@ completion = client.beta.chat.completions.parse(
 # Step 3: Parse the response
 # --------------------------------------------------------------
 
+# Always log the raw body returned from the completion before parsing
+if False:  # Set to True to enable raw output logging
+    print("\n--- Raw Completion Object (may include additional metadata) ---")
+    try:
+        # Attempt to serialize if the object supports pydantic-style export
+        if hasattr(completion, "model_dump_json"):
+            print(completion.model_dump_json(indent=2))
+        elif hasattr(completion, "model_dump"):
+            print(json.dumps(completion.model_dump(), indent=2))
+        else:
+            # Fallback to generic repr
+            print(repr(completion))
+    except Exception as e:  # pragma: no cover - defensive
+        print(f"[WARN] Failed to serialize raw completion: {e}")
+
+# Parse the structured response
 event = completion.choices[0].message.parsed
-event.name
-event.date
-event.participants
+if event is None:
+    raise ValueError("Model did not return a structured CalendarEvent response")
+
+print("\n--- Parsed CalendarEvent ---")
+print("Event Name:", event.name)
+print("Event Date:", event.date)
+print("Participants:", event.participants)
