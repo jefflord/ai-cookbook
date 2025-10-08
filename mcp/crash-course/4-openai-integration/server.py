@@ -17,8 +17,12 @@ def get_knowledge_base() -> str:
     Returns:
         A formatted string containing all Q&A pairs from the knowledge base.
     """
+    # Allow overriding the knowledge base location via environment variable KB_JSON_PATH
+    kb_path = os.getenv(
+        "KB_JSON_PATH",
+        os.path.join(os.path.dirname(__file__), "data", "kb.json"),
+    )
     try:
-        kb_path = os.path.join(os.path.dirname(__file__), "data", "kb.json")
         with open(kb_path, "r") as f:
             kb_data = json.load(f)
 
@@ -41,7 +45,7 @@ def get_knowledge_base() -> str:
 
         return kb_text
     except FileNotFoundError:
-        return "Error: Knowledge base file not found"
+        return f"Error: Knowledge base file not found at {kb_path}"
     except json.JSONDecodeError:
         return "Error: Invalid JSON in knowledge base file"
     except Exception as e:

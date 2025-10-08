@@ -72,7 +72,7 @@ system_prompt = "You are a helpful weather assistant."
 
 messages: List[Any] = [
     {"role": "system", "content": system_prompt},
-    {"role": "user", "content": "What's the weather like in Paris today?"},
+    {"role": "user", "content": "What's the weather like in Paris today? Is it nicer than in New York?"},
 ]
 
 with timed("initial_create"):
@@ -131,34 +131,13 @@ class WeatherResponse(BaseModel):
     )
 
 
-if False:
-    # get model_to_json(WeatherResponse)
-    WEATHER_RESPONSE_EXAMPLE_SCHEMA = model_to_json(WeatherResponse)
-
-    system_prompt = (
-        "You are a helpful weather assistant. "
-        "Use the provided tool to get the current temperature. "
-        "Respond in JSON format matching the schema exactly. "
-        "Schema fields: temperature (float), response (str). "
-        "Example response JSON (do not include comments):\n"
-        + WEATHER_RESPONSE_EXAMPLE_SCHEMA
-    )
-
-    completion_2 = client.beta.chat.completions.parse(  # type: ignore[arg-type]
+with timed("second_parse"):
+    completion_2 = client.beta.chat.completions.parse(
         model=MODEL,
-        messages=messages,  # type: ignore[arg-type]
-        tools=tools,  # type: ignore[arg-type]
+        messages=messages,
+        tools=tools,
         response_format=WeatherResponse,
     )
-else:
-
-    with timed("second_parse"):
-        completion_2 = client.beta.chat.completions.parse(
-            model=MODEL,
-            messages=messages,
-            tools=tools,
-            response_format=WeatherResponse,
-        )
 
 # --------------------------------------------------------------
 # Step 5: Check model response

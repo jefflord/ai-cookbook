@@ -1,4 +1,5 @@
 import json
+import os
 from typing import Any, List
 
 from pydantic import BaseModel, Field
@@ -19,12 +20,20 @@ docs: https://platform.openai.com/docs/guides/function-calling
 
 
 def search_kb(question: str):
+    """Load the whole knowledge base from the JSON file specified by KB_JSON_PATH.
+
+    (This is a mock function for demonstration purposes, we don't search.)
+    Falls back to a local `kb.json` in the current working directory if the env var
+    is not set. Raises FileNotFoundError with a clean message if the file can't be found.
     """
-    Load the whole knowledge base from the JSON file.
-    (This is a mock function for demonstration purposes, we don't search)
-    """
-    with open("kb.json", "r") as f:
-        return json.load(f)
+    kb_path = os.getenv("KB_JSON_PATH", "kb.json")
+    try:
+        with open(kb_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError as e:
+        raise FileNotFoundError(
+            f"Knowledge base file not found at '{kb_path}'. Set KB_JSON_PATH in your .env if needed."
+        ) from e
 
 
 # --------------------------------------------------------------
@@ -134,3 +143,6 @@ completion_3 = client.beta.chat.completions.parse(  # type: ignore[arg-type]
 )
 
 print("Non-KB question response:", completion_3.choices[0].message.content)
+
+
+
