@@ -1,5 +1,7 @@
 import json
 import os
+import time
+from contextlib import contextmanager
 from typing import Any, List
 
 from pydantic import BaseModel, Field
@@ -9,6 +11,19 @@ from client_util import load_env, get_client, get_model
 load_env()
 client = get_client()
 MODEL = get_model()
+
+perf_log: dict[str, float] = {}
+
+
+@contextmanager
+def timed(phase: str):
+    start = time.perf_counter()
+    try:
+        yield
+    finally:
+        duration = time.perf_counter() - start
+        perf_log[phase] = duration
+        print(f"[perf] model={MODEL} phase={phase} latency_s={duration:.3f}")
 
 """
 docs: https://platform.openai.com/docs/guides/function-calling
@@ -66,11 +81,12 @@ messages: List[Any] = [
     {"role": "user", "content": "What is the return policy?"},
 ]
 
-completion = client.chat.completions.create(  # type: ignore[arg-type]
-    model=MODEL,
-    messages=messages,  # type: ignore[arg-type]
-    tools=tools,  # type: ignore[arg-type]
-)
+with timed("initial_create"):
+    completion = client.chat.completions.create(  # type: ignore[arg-type]
+        model=MODEL,
+        messages=messages,  # type: ignore[arg-type]
+        tools=tools,  # type: ignore[arg-type]
+    )
 
 # --------------------------------------------------------------
 # Step 2: Model decides to call function(s)
@@ -110,12 +126,13 @@ class KBResponse(BaseModel):
     source: int = Field(description="The record id of the answer.")
 
 
-completion_2 = client.beta.chat.completions.parse(  # type: ignore[arg-type]
-    model=MODEL,
-    messages=messages,  # type: ignore[arg-type]
-    tools=tools,  # type: ignore[arg-type]
-    response_format=KBResponse,
-)
+with timed("second_parse"):
+    completion_2 = client.beta.chat.completions.parse(  # type: ignore[arg-type]
+        model=MODEL,
+        messages=messages,  # type: ignore[arg-type]
+        tools=tools,  # type: ignore[arg-type]
+        response_format=KBResponse,
+    )
 
 # --------------------------------------------------------------
 # Step 5: Check model response
@@ -136,13 +153,20 @@ messages = [
     {"role": "user", "content": "What is the weather in Tokyo?"},
 ]
 
-completion_3 = client.beta.chat.completions.parse(  # type: ignore[arg-type]
-    model=MODEL,
-    messages=messages,  # type: ignore[arg-type]
-    tools=tools,  # type: ignore[arg-type]
-)
+with timed("third_parse_non_kb"):
+    completion_3 = client.beta.chat.completions.parse(  # type: ignore[arg-type]
+        model=MODEL,
+        messages=messages,  # type: ignore[arg-type]
+        tools=tools,  # type: ignore[arg-type]
+    )
 
 print("Non-KB question response:", completion_3.choices[0].message.content)
+
+total_latency = sum(perf_log.values())
+print(f"[perf] model={MODEL} phase=total_workflow latency_s={total_latency:.3f}")
+summary = {"model": MODEL, **{k: round(v, 4) for k, v in perf_log.items()}, "total": round(total_latency, 4)}
+print("[perf-summary]", json.dumps(summary))
+print("DONE")
 
 
 
